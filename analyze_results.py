@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Aggregate simulator CSV output by protocol."""
+"""Aggregate LoRa mesh simulator CSV output by protocol."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from typing import Dict, List
 
 
 METRICS = [
+    # Baseline Metrics
     "unicast_pdr",
     "broadcast_coverage",
     "avg_delay_s",
@@ -25,6 +26,23 @@ METRICS = [
     "suppressed_forwards",
     "route_cache_hits",
     "route_cache_misses",
+    # Extended Research Metrics
+    "avg_distance_m",
+    "avg_rssi_dbm",
+    "min_rssi_dbm",
+    "avg_snr_db",
+    "min_snr_db",
+    "avg_sinr_db",
+    "min_sinr_db",
+    "obstacle_loss_events",
+    "interference_fail_count",
+    "node_failures_count",
+    "node_recoveries_count",
+    "energy_depletions_count",
+    "total_energy_consumed_j",
+    "avg_remaining_energy_j",
+    "min_remaining_energy_j",
+    "energy_per_delivery_j",
 ]
 
 
@@ -37,7 +55,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     grouped: Dict[str, List[dict]] = defaultdict(list)
-    with args.csv_path.open(newline="", encoding="utf-8") as f:
+    
+    # Use utf-8-sig to automatically handle Excel BOM headers
+    with args.csv_path.open(newline="", encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):
             grouped[row["protocol"]].append(row)
 
@@ -45,13 +65,21 @@ def main() -> None:
         print(f"\n{protocol}  n={len(rows)}")
         print("-" * (len(protocol) + 6 + len(str(len(rows)))))
         for metric in METRICS:
-            values = [float(row[metric]) for row in rows]
+            # Safely extract metric values if they exist in the CSV row
+            values = [
+                float(row[metric])
+                for row in rows
+                if metric in row and row[metric] != ""
+            ]
+            if not values:
+                continue
+            
             mu = mean(values)
             if len(values) >= 2:
                 sd = stdev(values)
-                print(f"{metric:24s} mean={mu:.6f}  sd={sd:.6f}")
+                print(f"{metric:26s} mean={mu:.6f}  sd={sd:.6f}")
             else:
-                print(f"{metric:24s} mean={mu:.6f}")
+                print(f"{metric:26s} mean={mu:.6f}")
 
 
 if __name__ == "__main__":

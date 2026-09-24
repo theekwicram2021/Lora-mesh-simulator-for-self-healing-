@@ -1,66 +1,59 @@
 # LoRa Mesh Routing Simulator
 
-Packet-level Python simulator for LoRa mesh routing research. The repository is
-intended for developers and researchers who want to reproduce baseline
-experiments, change topology/PHY/traffic parameters, and add new routing
-protocols for comparison.
+A packet-level Python simulator for evaluating LoRa mesh routing strategies under
+shared propagation, airtime, collision, node-failure, and energy assumptions.
+The project is designed for researchers and developers who want to compare
+routing behavior fairly across different protocol ideas without reproducing
+firmware internals from a specific product.
 
-Licensed under MIT.
+This simulator currently includes two behavior-equivalent baselines:
 
-This is a compact packet-level Python simulator for comparing LoRa mesh routing
-ideas under a fixed SX1262-style PHY profile.
+- `meshtastic`: managed flooding with delayed rebroadcast and suppression when a
+  duplicate copy is heard.
+- `meshcore`: route discovery with RREQ/RREP exchange followed by cached source
+  routes for repeated unicast conversations.
 
-It currently implements two behavior-equivalent baselines:
+The code also supports interference, static obstacles, node-failure schedules,
+energy accounting, and richer survival analysis for network resilience studies.
 
-- `meshtastic-like`: managed flooding with delayed rebroadcast and suppression
-  when another copy is heard.
-- `meshcore-like`: first unicast floods a route request, the destination replies
-  on the reverse path, then later unicast packets use a cached source route.
+See [docs/terminology-and-formulas.md](docs/terminology-and-formulas.md) for the
+project terminology, parameter list, and the propagation/LoRa formulas used in
+simulation.
 
-The simulator is not a firmware clone. It is a research harness for comparing
-routing behavior under the same topology, traffic, propagation, collision, and
-LoRa airtime model.
+## Quick start
 
-See [Terminology and Formulas](docs/terminology-and-formulas.md) for the English
-terms, abbreviations, metrics, and formulas used by the simulator.
-
-## Run
-
-Clone and enter the project:
+Clone the repository and run a baseline comparison:
 
 ```bash
-git clone https://github.com/BH4ME/lora-mesh-routing-sim.git
+git clone <repository-url>
 cd lora-mesh-routing-sim
-```
-
-No third-party Python package is required at the moment. Python 3.9+ is enough.
-
-```bash
 python3 lora_mesh_sim.py --protocol both --nodes 40 --duration-s 1800 --traffic unicast --seeds 3
 ```
 
-Use repeated unicast conversations, which is the scenario where MeshCore-style
-route caching should help:
+Run a repeated-unicast scenario that is better suited to route caching:
 
 ```bash
 python3 lora_mesh_sim.py --protocol both --nodes 40 --duration-s 1800 --traffic unicast --pair-count 6 --seeds 5
 ```
 
-Write CSV:
+Write the results to CSV for later analysis:
 
 ```bash
 python3 lora_mesh_sim.py --protocol both --nodes 80 --duration-s 3600 --traffic mixed --pair-count 10 --seeds 20 --csv results/baselines.csv
 ```
 
-Aggregate a multi-seed CSV:
+Aggregate a multi-seed CSV with the helper script:
 
 ```bash
 python3 analyze_results.py results/baselines.csv
 ```
 
-Useful parameters:
+## Core parameters
+
+Useful simulation knobs include:
 
 ```bash
+--protocol meshtastic|meshcore|both
 --nodes 80
 --area-m 3000
 --duration-s 3600
@@ -68,6 +61,9 @@ Useful parameters:
 --traffic unicast|broadcast|mixed
 --pair-count 10
 --seeds 30
+--seed0 1
+--max-hops 7
+--repeater-ratio 0.0
 --sf 9
 --bw-hz 125000
 --cr 1
@@ -75,38 +71,54 @@ Useful parameters:
 --tx-power-dbm 17
 --path-loss-exp 2.7
 --shadow-sigma-db 4
---max-hops 7
+--capture-threshold-db 6
+--csv results/output.csv
 ```
 
-Example scenarios:
+Additional research extensions supported by the current code:
 
 ```bash
-# Repeated unicast conversations, where route caching should help.
+--interference-enabled
+--interference-rate 2.0
+--interference-power-dbm 20.0
+--obstacles-file obstacles.json
+--node-failures-file failures.json
+--energy-j 1000
+--rx-power-w 0.05
+--idle-power-w 0.001
+--detailed-csv results/detailed.csv
+```
+
+## Example scenarios
+
+```bash
+# Repeated unicast traffic, where route caching can help.
 python3 lora_mesh_sim.py --protocol both --nodes 50 --area-m 3000 --duration-s 1200 --traffic unicast --rate-per-min 6 --pair-count 8 --seeds 20 --csv results/exp_50n_unicast_pairs.csv
 
-# Mixed traffic, with both broadcast and unicast messages.
+# Mixed traffic, with both broadcast and unicast traffic.
 python3 lora_mesh_sim.py --protocol both --nodes 50 --area-m 3000 --duration-s 1200 --traffic mixed --rate-per-min 6 --pair-count 8 --seeds 20 --csv results/exp_50n_mixed.csv
 ```
 
-## Model
+## Model and assumptions
 
-The PHY model uses:
+The PHY model includes:
 
-- Log-distance path loss plus log-normal shadowing.
-- Fixed LoRa SF/BW/CR for every node.
-- LoRa time-on-air.
-- Half-duplex radios.
-- Collision failure unless the desired signal exceeds the strongest interferer
-  by the capture threshold.
-- Probabilistic reception from SNR margin.
+- log-distance path loss with log-normal shadowing
+- fixed LoRa SF/BW/CR settings for all nodes
+- LoRa time-on-air estimation
+- half-duplex radio behavior
+- collision handling with capture threshold logic
+- probabilistic packet success based on SNR/SINR margins
+- optional background interference and obstacle attenuation
+- energy accounting for TX, RX, and idle power consumption
 
-The simulator produces virtual RSSI/SNR values from the propagation model. A
-real deployment would obtain those values from the SX1262 driver; in simulation,
-all protocols share the same generated values, making comparisons fair.
+The simulator produces virtual RSSI and SNR values from the modeled channel,
+which makes different protocols comparable under the same topology, traffic, and
+radio assumptions.
 
-## Metrics
+## Metrics reported
 
-The table and CSV include:
+The summary table and CSV include metrics such as:
 
 - `unicast_pdr`
 - `broadcast_coverage`
@@ -121,27 +133,28 @@ The table and CSV include:
 - `suppressed_forwards`
 - `route_cache_hits`
 - `route_cache_misses`
+- `avg_rssi_dbm`
+- `avg_snr_db`
+- `total_energy_consumed_j`
 
-For a paper, repeat each scenario with many seeds and report mean values with
-confidence intervals.
+These values are useful for comparing reliability, overhead, delay, and survival
+performance across scenarios.
 
-## Included Results
+## Included example results
 
-The `results/` directory contains example CSV outputs generated from the current
-simulator:
+The repository ships with a few sample outputs in the `results/` folder:
 
-- `baseline_smoke.csv`: small smoke-test run.
-- `exp_50n_unicast_pairs.csv`: 50-node repeated-unicast baseline comparison.
-- `exp_50n_mixed.csv`: 50-node mixed-traffic baseline comparison.
+- `meshcore_survival.csv`
+- `meshtastic_survival.csv`
+- `surviva1l_data.csv`
 
-Regenerate or replace them with your own scenarios as the routing model evolves.
+These files are examples of the output format produced by the simulator and can be
+replaced or regenerated for your own experiments as the model evolves.
 
-## Adding a Protocol
+## Extending the simulator
 
-Add a new class that inherits from `RoutingProtocol` in `lora_mesh_sim.py`, then
-register it in `build_protocol()`.
-
-The key methods are:
+Add a new protocol class in `lora_mesh_sim.py` and register it in
+`build_protocol()`. The main hooks are:
 
 ```python
 def send_app(self, src: int, dst: int, flow_id: int) -> None:
@@ -151,13 +164,13 @@ def on_receive(self, receiver: int, packet: Packet, rx: RxInfo) -> None:
     ...
 ```
 
-`RxInfo` contains simulated receive information such as RSSI-like receive power,
-SNR, SINR, and collision status. This is where an airtime-aware or SNR-aware
-routing policy can make forwarding decisions.
+`RxInfo` contains simulated receive values such as receive power, SNR, SINR,
+collision status, and link-quality information. This is the place to implement
+forwarding policies that consider airtime, SNR margin, or route availability.
 
 ## Scope
 
-This is a packet-level simulator, not a physical waveform simulator and not a
-line-by-line clone of Meshtastic or MeshCore firmware. The included baselines
-are behavior-equivalent research models designed for fair comparison under the
-same PHY/channel/traffic assumptions.
+This project is a packet-level research simulator. It is not a direct clone of
+Meshtastic or MeshCore firmware, and it is not a physical waveform simulator.
+Its purpose is to compare protocol behaviors under a common LoRa PHY, topology,
+traffic model, and energy/robustness assumptions.
